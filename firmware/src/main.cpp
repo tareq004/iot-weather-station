@@ -1,25 +1,25 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <Wire.h>
 #include <DHT.h>
 #include <Adafruit_BMP280.h>
 #include <ArduinoJson.h>
 
-// --- Configuration ---
-const char* WIFI_SSID = "EDU Students";
-const char* WIFI_PASS = "campus@334422";
+// --- Wi-Fi Credentials (Use any Wi-Fi or Mobile Hotspot) ---
+const char* WIFI_SSID = "YOUR_WIFI_NAME";
+const char* WIFI_PASS = "YOUR_WIFI_PASSWORD";
 
-// Replace 192.168.X.X with your laptop's local IPv4 address
-const char* SERVER_URL = "http://10.10.12.33:8000/api/readings/";
+// --- Live Render Cloud Endpoint ---
+const char* SERVER_URL = "https://iot-weather-api.onrender.com/api/readings/";
 
 #define DHTPIN 4
-#define DHTTYPE DHT22 // Change to DHT11 if you are using a DHT11 sensor
+#define DHTTYPE DHT22
 
 #define I2C_SDA 21
 #define I2C_SCL 22
 
-// --- Hardware Objects ---
 DHT dht(DHTPIN, DHTTYPE);
 Adafruit_BMP280 bmp;
 
@@ -57,11 +57,17 @@ void sendSensorData(float temperature, float humidity, float pressure) {
     return;
   }
 
+  WiFiClientSecure client;
+  client.setInsecure(); // Allows secure HTTPS connection to cloud without loading root CA certs
+
   HTTPClient http;
-  http.begin(SERVER_URL);
+  if (!http.begin(client, SERVER_URL)) {
+    Serial.println("[HTTP] Failed to initialize connection to cloud.");
+    return;
+  }
+
   http.addHeader("Content-Type", "application/json");
 
-  // Construct JSON payload
   JsonDocument doc;
   doc["temperature"] = serialized(String(temperature, 2));
   doc["humidity"]    = serialized(String(humidity, 2));
@@ -70,15 +76,15 @@ void sendSensorData(float temperature, float humidity, float pressure) {
   String requestBody;
   serializeJson(doc, requestBody);
 
-  Serial.print("[HTTP] Sending: ");
+  Serial.print("[HTTP] Sending to Cloud: ");
   Serial.println(requestBody);
 
   int httpResponseCode = http.POST(requestBody);
 
   if (httpResponseCode > 0) {
-    Serial.printf("[HTTP] Success! Status Code: %d\n", httpResponseCode);
+    Serial.printf("[HTTP] Success! Cloud Status Code: %d\n", httpResponseCode);
   } else {
-    Serial.printf("[HTTP] Request failed. Error: %s\n", http.errorToString(httpResponseCode).c_str());
+    Serial.printf("[HTTP] Cloud Request failed. Error: %s\n", http.errorToString(httpResponseCode).c_str());
   }
 
   http.end();
@@ -92,7 +98,6 @@ void setup() {
   Wire.begin(I2C_SDA, I2C_SCL);
   dht.begin();
 
-  // Check both standard I2C addresses (0x76 and 0x77)
   if (!bmp.begin(0x76) && !bmp.begin(0x77)) {
     Serial.println("[BMP280] Warning: Sensor not found at 0x76 or 0x77. Check wiring!");
   } else {
@@ -117,9 +122,8 @@ void loop() {
     float humidity = dht.readHumidity();
     float dhtTemp = dht.readTemperature();
     float bmpTemp = bmp.readTemperature();
-    float pressure = bmp.readPressure() / 100.0F; // Convert Pa to hPa
+    float pressure = bmp.readPressure() / 100.0F;
 
-    // Use DHT temperature if valid; fallback to BMP280 temperature
     float temperature = !isnan(dhtTemp) ? dhtTemp : bmpTemp;
 
     if (isnan(temperature) || isnan(humidity) || isnan(pressure)) {
