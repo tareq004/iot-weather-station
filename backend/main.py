@@ -103,6 +103,10 @@ def get_db():
 
 # --- 4. API Endpoints ---
 
+@app.get("/")
+def root():
+    return {"status": "online", "message": "IoT Environmental Station API"}
+
 # Data ingestion endpoint for ESP32
 # Handles both '/api/readings/' and '/api/readings' to prevent HTTP redirect drops
 @app.post("/api/readings/", response_model=ReadingResponse, status_code=status.HTTP_201_CREATED)
