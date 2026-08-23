@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IoT Environmental Monitoring Hub</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .glass-card {
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen p-4 sm:p-6 lg:p-8">
+  <div class="max-w-7xl mx-auto space-y-6">
+    
+    <!-- Header -->
+    <header class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 glass-card p-6 rounded-2xl shadow-xl">
+      <div>
+        <h1 class="text-2xl font-bold tracking-tight text-white">Environmental Station Dashboard</h1>
+        <p class="text-sm text-slate-400">Local Telemetry Hub • ESP32 + FastAPI</p>
+      </div>
+      <div class="flex items-center gap-3 bg-slate-900/80 px-4 py-2 rounded-xl border border-slate-800">
+        <span id="status-dot" class="w-3 h-3 rounded-full bg-rose-500 transition-all duration-300"></span>
+        <span id="status-text" class="text-sm font-medium text-slate-300">Checking API...</span>
+        <span id="last-updated" class="text-xs text-slate-500 ml-2 border-l border-slate-700 pl-2">--:--:--</span>
+      </div>
+    </header>
+
+    <!-- Real-Time Metric Cards -->
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      
+      <!-- Temperature -->
+      <div class="glass-card p-6 rounded-2xl border-t-2 border-t-rose-500">
+        <div class="flex justify-between items-center text-slate-400 mb-2">
+          <span class="text-xs font-bold uppercase tracking-wider">Temperature</span>
+          <span class="text-xs font-semibold px-2 py-0.5 rounded bg-rose-500/10 text-rose-400">Live</span>
+        </div>
+        <div class="flex items-baseline gap-2">
+          <span id="temp-val" class="text-4xl font-extrabold text-white">--</span>
+          <span class="text-xl text-rose-400 font-semibold">°C</span>
+        </div>
+        <p class="text-xs text-slate-500 mt-2">Ambient Air Temperature</p>
+      </div>
+
+      <!-- Humidity -->
+      <div class="glass-card p-6 rounded-2xl border-t-2 border-t-sky-500">
+        <div class="flex justify-between items-center text-slate-400 mb-2">
+          <span class="text-xs font-bold uppercase tracking-wider">Relative Humidity</span>
+          <span class="text-xs font-semibold px-2 py-0.5 rounded bg-sky-500/10 text-sky-400">Live</span>
+        </div>
+        <div class="flex items-baseline gap-2">
+          <span id="humidity-val" class="text-4xl font-extrabold text-white">--</span>
+          <span class="text-xl text-sky-400 font-semibold">%</span>
+        </div>
+        <p class="text-xs text-slate-500 mt-2">Moisture Saturation</p>
+      </div>
+
+      <!-- Pressure -->
+      <div class="glass-card p-6 rounded-2xl border-t-2 border-t-emerald-500">
+        <div class="flex justify-between items-center text-slate-400 mb-2">
+          <span class="text-xs font-bold uppercase tracking-wider">Atmospheric Pressure</span>
+          <span class="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400">Live</span>
+        </div>
+        <div class="flex items-baseline gap-2">
+          <span id="pressure-val" class="text-4xl font-extrabold text-white">--</span>
+          <span class="text-xl text-emerald-400 font-semibold">hPa</span>
+        </div>
+        <p class="text-xs text-slate-500 mt-2">Barometric Surface Reading</p>
+      </div>
+    </section>
+
+    <!-- Real-Time Chart -->
+    <section class="glass-card p-6 rounded-2xl">
+      <div class="flex justify-between items-center mb-4">
+        <div>
+          <h2 class="text-lg font-semibold text-white">Live Telemetry Trends</h2>
+          <p class="text-xs text-slate-400">Rolling window of the latest 50 readings</p>
+        </div>
+      </div>
+      <div class="h-80 w-full">
+        <canvas id="liveChart"></canvas>
+      </div>
+    </section>
+
+    <!-- Historical Data Table (Daily / Weekly Tabs) -->
+    <section class="glass-card p-6 rounded-2xl">
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4 border-b border-slate-800 pb-4">
+        <div>
+          <h2 class="text-lg font-semibold text-white">Historical Analytics</h2>
+          <p class="text-xs text-slate-400">Aggregated database summaries</p>
+        </div>
+        <div class="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
+          <button id="tab-daily" onclick="switchTab('daily')" class="px-4 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 text-white transition-all">Daily View</button>
+          <button id="tab-weekly" onclick="switchTab('weekly')" class="px-4 py-1.5 text-xs font-semibold rounded-lg text-slate-400 hover:text-white transition-all">Weekly View</button>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm text-slate-300">
+          <thead class="bg-slate-900/60 text-slate-400 uppercase text-xs">
+            <tr>
+              <th id="col-time-label" class="px-4 py-3 rounded-l-lg">Date</th>
+              <th class="px-4 py-3">Avg Temp (°C)</th>
+              <th class="px-4 py-3">Min / Max Temp</th>
+              <th class="px-4 py-3">Avg Humidity (%)</th>
+              <th class="px-4 py-3">Avg Pressure (hPa)</th>
+              <th class="px-4 py-3 rounded-r-lg">Samples Count</th>
+            </tr>
+          </thead>
+          <tbody id="history-table-body" class="divide-y divide-slate-800">
+            <tr>
+              <td colspan="6" class="px-4 py-6 text-center text-slate-500">Loading historical data...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <script>
+    const API_BASE = "http://localhost:8000/api";
+    let activeTab = 'daily';
+
+    // Chart.js Setup
+    const ctx = document.getElementById('liveChart').getContext('2d');
+    const liveChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: 'Temperature (°C)',
+            borderColor: '#f43f5e',
+            backgroundColor: 'rgba(244, 63, 94, 0.08)',
+            data: [],
+            yAxisID: 'yTemp',
+            tension: 0.3,
+            fill: true
+          },
+          {
+            label: 'Humidity (%)',
+            borderColor: '#38bdf8',
+            backgroundColor: 'rgba(56, 189, 248, 0.08)',
+            data: [],
+            yAxisID: 'yHumid',
+            tension: 0.3,
+            fill: true
+          },
+          {
+            label: 'Pressure (hPa)',
+            borderColor: '#10b981',
+            backgroundColor: 'transparent',
+            data: [],
+            yAxisID: 'yPress',
+            tension: 0.3
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+          x: {
+            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            ticks: { color: '#64748b', maxTicksLimit: 10 }
+          },
+          yTemp: {
+            type: 'linear',
+            position: 'left',
+            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+            ticks: { color: '#f43f5e' }
+          },
+          yHumid: {
+            type: 'linear',
+            position: 'right',
+            grid: { drawOnChartArea: false },
+            ticks: { color: '#38bdf8' }
+          },
+          yPress: {
+            type: 'linear',
+            position: 'right',
+            grid: { drawOnChartArea: false },
+            ticks: { color: '#10b981' }
+          }
+        },
+        plugins: {
+          legend: { labels: { color: '#cbd5e1' } }
+        }
+      }
+    });
+
+    function setOnlineStatus(online) {
+      const dot = document.getElementById('status-dot');
+      const text = document.getElementById('status-text');
+      if (online) {
+        dot.className = "w-3 h-3 rounded-full bg-emerald-500 animate-pulse";
+        text.innerText = "Online";
+        text.className = "text-sm font-medium text-emerald-400";
+      } else {
+        dot.className = "w-3 h-3 rounded-full bg-rose-500";
+        text.innerText = "API Offline";
+        text.className = "text-sm font-medium text-rose-400";
+      }
+    }
+
+    async function fetchLatest() {
+      try {
+        const res = await fetch(`${API_BASE}/readings/latest`);
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+
+        if (data) {
+          document.getElementById('temp-val').innerText = data.temperature.toFixed(1);
+          document.getElementById('humidity-val').innerText = data.humidity.toFixed(1);
+          document.getElementById('pressure-val').innerText = data.pressure.toFixed(1);
+          document.getElementById('last-updated').innerText = new Date(data.timestamp).toLocaleTimeString();
+          setOnlineStatus(true);
+        }
+      } catch (err) {
+        setOnlineStatus(false);
+      }
+    }
+
+    async function fetchChart() {
+      try {
+        const res = await fetch(`${API_BASE}/readings?limit=50`);
+        if (!res.ok) return;
+        const records = await res.json();
+
+        liveChart.data.labels = records.map(r => new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+        liveChart.data.datasets[0].data = records.map(r => r.temperature);
+        liveChart.data.datasets[1].data = records.map(r => r.humidity);
+        liveChart.data.datasets[2].data = records.map(r => r.pressure);
+        liveChart.update('none'); // Update without full redraw animation for performance
+      } catch (err) {
+        console.error("Failed to load chart series", err);
+      }
+    }
+
+    async function fetchHistory() {
+      try {
+        const endpoint = activeTab === 'daily' ? `${API_BASE}/history/daily` : `${API_BASE}/history/weekly`;
+        const res = await fetch(endpoint);
+        if (!res.ok) return;
+        const historyData = await res.json();
+
+        const tbody = document.getElementById('history-table-body');
+        if (historyData.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-4 text-center text-slate-500">No recorded data in database yet.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = historyData.map(item => `
+          <tr class="hover:bg-slate-900/40 transition-colors">
+            <td class="px-4 py-3 font-semibold text-slate-200">${item.date || item.year_week}</td>
+            <td class="px-4 py-3 text-rose-400 font-bold">${item.avg_temperature}</td>
+            <td class="px-4 py-3 text-slate-300">${item.min_temperature} / ${item.max_temperature}</td>
+            <td class="px-4 py-3 text-sky-400 font-bold">${item.avg_humidity}</td>
+            <td class="px-4 py-3 text-emerald-400 font-bold">${item.avg_pressure}</td>
+            <td class="px-4 py-3 text-slate-400">${item.total_samples}</td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        console.error("Failed to fetch aggregate history", err);
+      }
+    }
+
+    function switchTab(tab) {
+      activeTab = tab;
+      const btnDaily = document.getElementById('tab-daily');
+      const btnWeekly = document.getElementById('tab-weekly');
+      const colLabel = document.getElementById('col-time-label');
+
+      if (tab === 'daily') {
+        btnDaily.className = "px-4 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 text-white transition-all";
+        btnWeekly.className = "px-4 py-1.5 text-xs font-semibold rounded-lg text-slate-400 hover:text-white transition-all";
+        colLabel.innerText = "Date";
+      } else {
+        btnWeekly.className = "px-4 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 text-white transition-all";
+        btnDaily.className = "px-4 py-1.5 text-xs font-semibold rounded-lg text-slate-400 hover:text-white transition-all";
+        colLabel.innerText = "Year-Week";
+      }
+      fetchHistory();
+    }
+
+    // Initial triggers & intervals
+    fetchLatest();
+    fetchChart();
+    fetchHistory();
+
+    setInterval(fetchLatest, 3000);   // Refresh live cards every 3s
+    setInterval(fetchChart, 5000);    // Refresh real-time graph every 5s
+    setInterval(fetchHistory, 30000); // Refresh history tables every 30s
+  </script>
+</body>
+</html>
