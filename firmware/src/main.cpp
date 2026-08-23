@@ -8,8 +8,8 @@
 #include <ArduinoJson.h>
 
 // --- Wi-Fi Credentials (Use any Wi-Fi or Mobile Hotspot) ---
-const char* WIFI_SSID = "YOUR_WIFI_NAME";
-const char* WIFI_PASS = "YOUR_WIFI_PASSWORD";
+const char* WIFI_SSID = "BHUIYANH";
+const char* WIFI_PASS = "217092004";
 
 // --- Live Render Cloud Endpoint ---
 const char* SERVER_URL = "https://iot-weather-api.onrender.com/api/readings/";
